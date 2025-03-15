@@ -71,3 +71,106 @@ class DatabaseManager:
     
     def close(self):
         self.session.close()
+    
+    def add_face(self, image_id, person_name, face_encoding, facial_area=None, landmarks=None, confidence=None):
+        """
+        Add a face to the database with enhanced metadata.
+        
+        Args:
+            image_id: ID of the image where the face was detected
+            person_name: Name of the person
+            face_encoding: JSON string of face encoding
+            facial_area: JSON string of facial area coordinates
+            landmarks: JSON string of facial landmarks
+            confidence: Detection confidence score
+            
+        Returns:
+            The newly created Face object
+        """
+        face = Face(
+            image_id=image_id,
+            person_name=person_name,
+            face_encoding=face_encoding,
+            facial_area=facial_area,
+            landmarks=landmarks,
+            confidence=confidence
+        )
+        self.session.add(face)
+        self.session.commit()
+        return face
+
+    def update_image_processed_status(self, image_id, processed=True, face_count=0):
+        """
+        Update the processed status and face count of an image.
+        
+        Args:
+            image_id: ID of the image to update
+            processed: Whether the image has been processed
+            face_count: Number of faces detected in the image
+            
+        Returns:
+            The updated Image object
+        """
+        image = self.session.query(Image).filter(Image.id == image_id).first()
+        if image:
+            image.processed = processed
+            image.face_count = face_count
+            self.session.commit()
+        return image
+
+    def get_unprocessed_images(self, limit=100):
+        """
+        Get images that haven't been processed yet.
+        
+        Args:
+            limit: Maximum number of images to return
+            
+        Returns:
+            List of Image objects
+        """
+        return self.session.query(Image).filter(Image.processed == False).limit(limit).all()
+
+    def update_person_name(self, old_name, new_name):
+        """
+        Update a person's name across all faces.
+        
+        Args:
+            old_name: Current name
+            new_name: New name
+            
+        Returns:
+            Number of faces updated
+        """
+        faces = self.session.query(Face).filter(Face.person_name == old_name).all()
+        for face in faces:
+            face.person_name = new_name
+        self.session.commit()
+        return len(faces)
+
+    def merge_persons(self, source_name, target_name):
+        """
+        Merge two person identities.
+        
+        Args:
+            source_name: Person to merge from
+            target_name: Person to merge into
+            
+        Returns:
+            Number of faces updated
+        """
+        return self.update_person_name(source_name, target_name)
+
+    def get_face_count_by_person(self):
+        """
+        Get the number of faces for each person.
+        
+        Returns:
+            Dictionary mapping person names to face counts
+        """
+        from sqlalchemy import func
+        results = self.session.query(
+            Face.person_name, 
+            func.count(Face.id).label('face_count')
+        ).group_by(Face.person_name).all()
+        
+        return {person: count for person, count in results}
